@@ -1,0 +1,655 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guía Completa de LoRa, Meshtastic, Meshcore, ESP32, LILYGO y Redes de Malla</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React y ReactDOM CDNs -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel CDN -->
+  <script src="https://unpkg.com/@babel/standalone@7.25.7/babel.min.js"></script>
+  <!-- html2pdf.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body { background-color: #f3f4f6; font-family: Arial, sans-serif; }
+    #loading { display: block; text-align: center; padding: 20px; color: #374151; }
+    #fallback { display: none; padding: 20px; }
+    .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; }
+    .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    @media (max-width: 640px) { table { font-size: 0.875rem; } th, td { padding: 0.5rem; } }
+    /* Estilos para modo oscuro */
+    .dark body { background-color: #1f2937; color: #e5e7eb; }
+    .dark footer { background-color: #111827; }
+    .dark nav { background-color: #1e3a8a; }
+    .dark .bg-blue-600 { background-color: #1e40af; }
+    .dark .text-blue-600 { color: #60a5fa; }
+    .dark .hover\:bg-blue-700:hover { background-color: #1e3a8a; }
+    .dark table { background-color: #374151; }
+    /* Estilos para impresión */
+    @media print {
+      nav, footer, button.fixed, input { display: none; }
+      section { page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Cargando la página...</div>
+  <div id="fallback">
+    <h1>Guía de Redes de Malla</h1>
+    <p>Error al cargar la página. Verifica tu conexión a internet o usa un servidor local (ej.: npx http-server).</p>
+    <p>Consulta la consola del navegador (F12) para más detalles.</p>
+  </div>
+  <div id="root"></div>
+  <script type="text/babel">
+    // Componente de Navegación
+    const Navbar = () => (
+      <nav className="bg-blue-600 dark:bg-blue-900 text-white p-4 shadow-md fixed w-full top-0 z-10">
+        <div className="container mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Guía de Redes de Malla</h1>
+          <div className="flex space-x-4 items-center">
+            <a href="#lora" className="hover:underline">LoRa</a>
+            <a href="#meshtastic" className="hover:underline">Meshtastic</a>
+            <a href="#meshcore" className="hover:underline">Meshcore</a>
+            <a href="#esp32" className="hover:underline">ESP32</a>
+            <a href="#lilygo" className="hover:underline">LILYGO</a>
+            <a href="#equipos" className="hover:underline">Equipos</a>
+            <a href="#videos" className="hover:underline">Videos</a>
+            <a href="#faq" className="hover:underline">FAQ</a>
+            <Search />
+            <DownloadPDF />
+            <ThemeToggle />
+          </div>
+        </div>
+      </nav>
+    );
+
+    // Componente de Búsqueda
+    const Search = () => {
+      const [query, setQuery] = React.useState('');
+      const handleSearch = (e) => {
+        setQuery(e.target.value);
+        const elements = document.querySelectorAll('section p, section li, section h2, section h3');
+        elements.forEach(el => {
+          el.style.backgroundColor = '';
+          if (query && el.textContent.toLowerCase().includes(query.toLowerCase())) {
+            el.style.backgroundColor = '#fef08a';
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+      };
+      return (
+        <input
+          type="text"
+          placeholder="Buscar en la página..."
+          value={query}
+          onChange={handleSearch}
+          className="p-2 rounded-md bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100"
+        />
+      );
+    };
+
+    // Componente para Descargar PDF
+    const DownloadPDF = () => {
+      const handleDownload = () => {
+        console.log('Iniciando descarga de PDF...');
+        if (typeof html2pdf === 'undefined') {
+          console.error('Error: html2pdf.js no está cargado. Verifica el CDN o la conexión a internet.');
+          alert('No se puede generar el PDF. La biblioteca html2pdf.js no está disponible. Verifica tu conexión a internet o desactiva bloqueadores de anuncios.');
+          return;
+        }
+        try {
+          const element = document.getElementById('root');
+          if (!element) {
+            console.error('Error: No se encontró el elemento con id "root".');
+            alert('Error al generar el PDF: No se encontró el contenido de la página.');
+            return;
+          }
+          const opt = {
+            margin: 0.5,
+            filename: 'Guia_Redes_Malla.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 1.5 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+          };
+          html2pdf().from(element).set(opt).save();
+          console.log('PDF generado exitosamente.');
+        } catch (error) {
+          console.error('Error al generar el PDF:', error);
+          alert('Error al generar el PDF: ' + error.message + '. Consulta la consola del navegador (F12) para más detalles.');
+        }
+      };
+      return (
+        <button 
+          onClick={handleDownload} 
+          className="text-white hover:underline"
+        >
+          Descargar como PDF
+        </button>
+      );
+    };
+
+    // Componente para Cambiar Modo (Sol/Luna)
+    const ThemeToggle = () => {
+      const [isDark, setIsDark] = React.useState(document.documentElement.classList.contains('dark'));
+      const toggleTheme = () => {
+        document.documentElement.classList.toggle('dark');
+        setIsDark(!isDark);
+      };
+      return (
+        <button 
+          onClick={toggleTheme} 
+          className="text-white text-2xl p-2 rounded-full hover:bg-blue-700 dark:hover:bg-blue-800"
+          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        >
+          {isDark ? '☀' : '🌙'}
+        </button>
+      );
+    };
+
+    // Componente de Sección
+    const Section = ({ id, title, children }) => (
+      <section id={id} className="pt-20 pb-8 px-4">
+        <div className="container mx-auto">
+          <h2 className="text-3xl font-semibold mb-4">{title}</h2>
+          {children}
+        </div>
+      </section>
+    );
+
+    // Componente de Tabla de Equipos
+    const EquipmentTable = () => (
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white dark:bg-gray-700 shadow-md rounded-lg">
+          <thead>
+            <tr className="bg-blue-600 dark:bg-blue-900 text-white">
+              <th className="py-2 px-4">Dispositivo</th>
+              <th className="py-2 px-4">Marca</th>
+              <th className="py-2 px-4">Microcontrolador</th>
+              <th className="py-2 px-4">Características</th>
+              <th className="py-2 px-4">Precio (USD)</th>
+              <th className="py-2 px-4">Recomendado Para</th>
+              <th className="py-2 px-4">Notas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="border py-2 px-4">T-Beam</td>
+              <td className="border py-2 px-4">LILYGO</td>
+              <td className="border py-2 px-4">ESP32-S3</td>
+              <td className="border py-2 px-4">LoRa SX1262, GPS (NEO-6M), pantalla OLED opcional, batería 18650, WiFi/BT, alcance hasta 15 km</td>
+              <td className="border py-2 px-4">$20-30</td>
+              <td className="border py-2 px-4">Principiantes, uso general</td>
+              <td className="border py-2 px-4">Popular en 2025 por GPS. Usa antena externa para mejor alcance.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4">WisBlock Starter Kit</td>
+              <td className="border py-2 px-4">RAKwireless</td>
+              <td className="border py-2 px-4">nRF52840</td>
+              <td className="border py-2 px-4">LoRa SX1262, GPS opcional, modular (sensores, displays), bajo consumo, solar-ready, BT 5.0</td>
+              <td className="border py-2 px-4">$40-60</td>
+              <td className="border py-2 px-4">Redes grandes, solares</td>
+              <td className="border py-2 px-4">Batería larga, ideal para off-grid.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4">LoRa32 V3</td>
+              <td className="border py-2 px-4">Heltec</td>
+              <td className="border py-2 px-4">ESP32-S3</td>
+              <td className="border py-2 px-4">LoRa SX1262, pantalla OLED, WiFi/BT, no GPS estándar</td>
+              <td className="border py-2 px-4">$15-25</td>
+              <td className="border py-2 px-4">Económico, compacto</td>
+              <td className="border py-2 px-4">Mejorado en 2025, fácil flasheo.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4">T-Echo</td>
+              <td className="border py-2 px-4">LILYGO</td>
+              <td className="border py-2 px-4">nRF52840</td>
+              <td className="border py-2 px-4">LoRa SX1262, pantalla E-Ink, GPS, batería integrada, case incluido, BT 5.0</td>
+              <td className="border py-2 px-4">$30-40</td>
+              <td className="border py-2 px-4">Portátil, emergencias</td>
+              <td className="border py-2 px-4">Versión 2025 con case robusto.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4">SenseCAP Card Tracker T1000-E</td>
+              <td className="border py-2 px-4">Seeed Studio</td>
+              <td className="border py-2 px-4">nRF52840</td>
+              <td className="border py-2 px-4">LoRa LR1110, GPS, BT 5.1, preflasheado, sensores (temperatura, movimiento)</td>
+              <td className="border py-2 px-4">$50-70</td>
+              <td className="border py-2 px-4">Plug-and-play, tracking</td>
+              <td className="border py-2 px-4">Listo para usar, ideal para principiantes.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4">T-Deck</td>
+              <td className="border py-2 px-4">LILYGO</td>
+              <td className="border py-2 px-4">ESP32-S3</td>
+              <td className="border py-2 px-4">LoRa SX1262, pantalla TFT, teclado, WiFi/BT, no GPS</td>
+              <td className="border py-2 px-4">$25-35</td>
+              <td className="border py-2 px-4">Mensajería directa</td>
+              <td className="border py-2 px-4">Soporte de voz en desarrollo (2025).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+
+    // Componente de Tabla Comparativa Meshcore vs Meshtastic
+    const ComparisonTable = () => (
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white dark:bg-gray-700 shadow-md rounded-lg">
+          <thead>
+            <tr className="bg-blue-600 dark:bg-blue-900 text-white">
+              <th className="py-2 px-4">Característica</th>
+              <th className="py-2 px-4">Meshcore</th>
+              <th className="py-2 px-4">Meshtastic</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Enrutamiento</td>
+              <td className="border py-2 px-4">Híbrido: Inundación inicial, luego enrutamiento fijo. Solo repetidores retransmiten, reduciendo congestión. Soporta hasta 64 saltos.</td>
+              <td className="border py-2 px-4">Inundación gestionada con límite de 7 saltos. Todos los nodos retransmiten, lo que puede causar congestión.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Confirmación de entrega</td>
+              <td className="border py-2 px-4">Confirmación clara de entrega (sí/no) con intentos de envío visibles. Cambia entre enrutamiento directo e inundación si falla.</td>
+              <td className="border py-2 px-4">Confirmación ambigua (ícono de nube con check). No siempre garantiza entrega.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Roles de dispositivos</td>
+              <td className="border py-2 px-4">Fijos al flashear (Cliente, Repetidor, Room Server). No cambia sin reflasheo.</td>
+              <td className="border py-2 px-4">Dinámicos (Cliente, Router, Cliente Mudo). Cambiables vía app.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Consumo energético</td>
+              <td className="border py-2 px-4">Optimizado para bajo consumo. Clientes no retransmiten, mejorando duración de batería.</td>
+              <td className="border py-2 px-4">Mayor consumo si todos los nodos retransmiten. nRF52 más eficiente que ESP32.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Comunidad</td>
+              <td className="border py-2 px-4">Más pequeña, creciendo (ej.: República Checa). Foro principal en Discord, menos soporte inmediato.</td>
+              <td className="border py-2 px-4">Grande, establecida (miles de nodos, ej.: EE.UU.). Soporte en Discord, Reddit, GitHub.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Compatibilidad de hardware</td>
+              <td className="border py-2 px-4">Heltec, RAK Wireless, LILYGO. Menos dispositivos probados.</td>
+              <td className="border py-2 px-4">Amplia: LILYGO, Heltec, RAK, Seeed Studio, etc. Más opciones.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Integraciones</td>
+              <td className="border py-2 px-4">Enfocado en comunicación pura. Sin MQTT ni GPS en tiempo real por defecto (funciones premium).</td>
+              <td className="border py-2 px-4">Soporte para MQTT, GPS en tiempo real, ATAK, sensores (ej.: SenseCAP).</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Licencia</td>
+              <td className="border py-2 px-4">MIT, permite uso comercial (cerrado).</td>
+              <td className="border py-2 px-4">GPL-3.0, requiere código abierto para derivados.</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Costo</td>
+              <td className="border py-2 px-4">App con funciones premium ($11). Hardware similar a Meshtastic.</td>
+              <td className="border py-2 px-4">Gratis, solo costo de hardware ($15-70).</td>
+            </tr>
+            <tr>
+              <td className="border py-2 px-4 font-semibold">Escalabilidad</td>
+              <td className="border py-2 px-4">Diseñado para redes grandes con repetidores. Inundación menos prioritaria en nodos distantes.</td>
+              <td className="border py-2 px-4">Puede saturarse en redes grandes. Mejoras en curso (firmware 2.6).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+
+    // Componente de Recursos de Video
+    const VideoResources = () => (
+      <Section id="videos" title="Recursos de Video">
+        <p className="mb-4">Explora estos videos para aprender más sobre Meshtastic, su configuración y cómo construir nodos para redes de malla LoRa.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-semibold mb-2">Meshtastic Getting Started - Install, Configure, and Test!</h4>
+            <div className="video-container">
+              <iframe src="https://www.youtube.com/embed/igWP0O_VuUo" title="Meshtastic Getting Started" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+            </div>
+            <p className="mt-2">Guía práctica para principiantes sobre cómo instalar, configurar y probar dispositivos Meshtastic, incluyendo flasheo de firmware.</p>
+          </div>
+          <div>
+            <h4 className="font-semibold mb-2">Mesh Networking with Meshtastic</h4>
+            <div className="video-container">
+              <iframe src="https://www.youtube.com/embed/851XMf3haww" title="Mesh Networking with Meshtastic" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+            </div>
+            <p className="mt-2">Explicación del funcionamiento de las redes de malla con Meshtastic y sus aplicaciones off-grid.</p>
+          </div>
+          <div>
+            <h4 className="font-semibold mb-2">Getting Started with Meshtastic</h4>
+            <div className="video-container">
+              <iframe src="https://www.youtube.com/embed/6vVtKR6lEqA" title="Getting Started with Meshtastic" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+            </div>
+            <p className="mt-2">Tutorial introductorio sobre Meshtastic, parte de una lista de reproducción con configuraciones avanzadas.</p>
+          </div>
+          <div>
+            <h4 className="font-semibold mb-2">How to build a Meshtastic LoRa Mesh Network Node</h4>
+            <div className="video-container">
+              <iframe src="https://www.youtube.com/embed/0TF2JioaJbM" title="How to build a Meshtastic LoRa Mesh Network Node" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen></iframe>
+            </div>
+            <p className="mt-2">Guía detallada para construir un nodo Meshtastic con hardware LoRa, incluyendo selección de componentes y configuración.</p>
+          </div>
+        </div>
+        <p className="mt-4">Si los videos no cargan, verifica tu conexión a internet o desactiva bloqueadores de anuncios.</p>
+      </Section>
+    );
+
+    // Componente de Preguntas Frecuentes
+    const FAQ = () => (
+      <Section id="faq" title="Preguntas Frecuentes">
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-xl font-semibold">¿Qué frecuencia LoRa debo usar?</h3>
+            <p>Usa 915 MHz en América, 868 MHz en Europa, 433 MHz en Asia (verifica regulaciones locales). Consulta <a href="https://www.lora-alliance.org/" className="text-blue-600 dark:text-blue-400 hover:underline">LoRa Alliance</a>.</p>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">¿Cómo flashear firmware Meshtastic?</h3>
+            <p>Usa el Web Flasher en <a href="https://meshtastic.org/docs/getting-started/flashing-firmware/" className="text-blue-600 dark:text-blue-400 hover:underline">Meshtastic</a> o herramientas como Adafruit ESPTool para Meshcore (<a href="https://github.com/meshcore-dev/MeshCore" className="text-blue-600 dark:text-blue-400 hover:underline">GitHub</a>).</p>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">¿Puedo usar Meshtastic y Meshcore juntos?</h3>
+            <p>No, usan protocolos incompatibles en la misma banda (868/915 MHz). Elige uno según tus necesidades (ver tabla Meshcore vs. Meshtastic).</p>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold">¿Qué hardware recomiendan para principiantes?</h3>
+            <p>LILYGO T-Beam ($20-30) es ideal por su GPS, LoRa SX1262 y bajo costo. Compra en <a href="https://www.lilygo.cc/" className="text-blue-600 dark:text-blue-400 hover:underline">LILYGO</a>.</p>
+          </div>
+        </div>
+      </Section>
+    );
+
+    // Componente Principal
+    const App = () => (
+      <div>
+        <Navbar />
+        <Section id="lora" title="¿Qué es LoRa?">
+          <p className="mb-4">La red LoRa (Long Range) es una tecnología de comunicación inalámbrica de baja potencia y largo alcance diseñada para el Internet de las Cosas (IoT). Permite la transmisión de datos a largas distancias (hasta 10-15 km en áreas rurales y 2-5 km en áreas urbanas) con un consumo energético mínimo, lo que la hace ideal para dispositivos que funcionan con baterías, como sensores o medidores inteligentes.</p>
+          <h3 id="lora-caracteristicas" className="text-xl font-semibold mb-2">Características principales</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Bajo consumo de energía</strong>: Los dispositivos LoRa pueden operar durante años con una sola batería, ya que entran en modo de bajo consumo cuando no transmiten.</li>
+            <li><strong>Largo alcance</strong>: Puede cubrir grandes distancias, superando a tecnologías como Wi-Fi o Bluetooth.</li>
+            <li><strong>Baja tasa de datos</strong>: Está diseñada para enviar pequeños paquetes de datos (como lecturas de sensores), no para aplicaciones que requieren alta velocidad, como streaming.</li>
+            <li><strong>Modulación robusta</strong>: Utiliza una técnica de modulación de espectro ensanchado (CSS) que mejora la resistencia a interferencias y permite comunicaciones fiables en entornos ruidosos.</li>
+            <li><strong>Topología en estrella</strong>: Los dispositivos se conectan a gateways (puertas de enlace) que actúan como intermediarios con la red central.</li>
+          </ul>
+          <h3 id="lora-vs-lorawan" className="text-xl font-semibold mb-2">LoRa vs. LoRaWAN</h3>
+          <p className="mb-4"><strong>LoRa</strong> se refiere a la capa física, es decir, la tecnología de modulación de radio. <strong>LoRaWAN</strong> es el protocolo de red basado en LoRa, que define cómo los dispositivos se comunican, gestionan la seguridad y optimizan el uso de la red.</p>
+          <h3 id="lora-aplicaciones" className="text-xl font-semibold mb-2">Aplicaciones comunes</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Ciudades inteligentes</strong>: Monitoreo de tráfico, alumbrado público, gestión de residuos.</li>
+            <li><strong>Agricultura</strong>: Sensores de humedad, temperatura o calidad del suelo.</li>
+            <li><strong>Logística</strong>: Seguimiento de activos y flotas.</li>
+            <li><strong>Hogar inteligente</strong>: Dispositivos como medidores de agua o energía.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Ventajas</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li>Gran alcance y penetración en interiores.</li>
+            <li>Bajo costo de implementación.</li>
+            <li>Ideal para aplicaciones de IoT con datos pequeños y poco frecuentes.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Limitaciones</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li>No es adecuada para aplicaciones que requieren alta velocidad o gran ancho de banda.</li>
+            <li>La latencia puede ser alta en comparación con otras tecnologías.</li>
+          </ul>
+          <p className="mb-4">Consulta el <a href="https://www.lora-alliance.org/" className="text-blue-600 dark:text-blue-400 hover:underline">Sitio oficial de LoRa Alliance</a> para más información.</p>
+        </Section>
+        <Section id="meshtastic" title="¿Qué es Meshtastic?">
+          <p className="mb-4">Meshtastic es un proyecto de código abierto que utiliza la tecnología LoRa para crear una red de comunicación descentralizada, de bajo consumo y largo alcance, ideal para entornos sin acceso a internet o redes móviles. Permite enviar mensajes de texto, compartir ubicaciones GPS y, en el futuro, transmitir mensajes de voz, sin depender de infraestructura de comunicación tradicional.</p>
+          <h3 id="meshtastic-caracteristicas" className="text-xl font-semibold mb-2">Características principales</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Descentralizado y sin infraestructura</strong>: No requiere torres de telefonía, Wi-Fi ni internet. Los dispositivos se conectan directamente entre sí, formando una red de malla donde cada nodo retransmite mensajes.</li>
+            <li><strong>Largo alcance</strong>: Gracias a LoRa, Meshtastic puede alcanzar distancias de 10-15 km en línea de visión, y en casos excepcionales, hasta 331 km con condiciones óptimas y antenas de alta calidad.</li>
+            <li><strong>Bajo consumo energético</strong>: Los dispositivos son eficientes, ideales para operar con baterías durante largos períodos.</li>
+            <li><strong>Mensajería cifrada</strong>: Los mensajes se envían en canales con cifrado AES256, garantizando privacidad, aunque sin secreto perfecto hacia adelante.</li>
+            <li><strong>Código abierto</strong>: Licencia GPL-3.0, con una comunidad activa en GitHub y Discord.</li>
+            <li><strong>Compatibilidad multiplataforma</strong>: Apps para Android, iOS, web o CLI. Conexión vía Bluetooth, Wi-Fi o USB.</li>
+          </ul>
+          <h3 id="meshtastic-como-funciona" className="text-xl font-semibold mb-2">Cómo funciona</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Red de malla</strong>: Cada dispositivo actúa como nodo, enviando y retransmitiendo mensajes. Los nodos intermedios extienden el alcance.</li>
+            <li><strong>Canales</strong>: Comunicación en canales lógicos con cifrado. El Canal 0 es público; se pueden crear canales privados.</li>
+            <li><strong>Enrutamiento</strong>: Usa inundación gestionada con límite de saltos para evitar congestión.</li>
+            <li><strong>MQTT (opcional)</strong>: Conecta nodos a internet para unir redes de malla distantes.</li>
+          </ul>
+          <h3 id="meshtastic-aplicaciones" className="text-xl font-semibold mb-2">Aplicaciones prácticas</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Aventuras al aire libre</strong>: Comunicación en caminatas, esquí o parapente sin señal móvil.</li>
+            <li><strong>Emergencias</strong>: Útil en desastres naturales o fallos de red.</li>
+            <li><strong>IoT y seguimiento</strong>: Monitoreo de activos o sensores en áreas remotas.</li>
+            <li><strong>Exploración espacial simulada</strong>: Usado por la Mars Society en misiones análogas.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Limitaciones</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Solo texto</strong>: Limitado a mensajes de texto y datos pequeños (GPS). Soporte de voz en desarrollo.</li>
+            <li><strong>Línea de visión</strong>: Obstáculos como edificios reducen el alcance.</li>
+            <li><strong>Congestión</strong>: Muchas nodos pueden saturar la red (soluciones como Short Turbo ayudan).</li>
+            <li><strong>Necesidad de nodos</strong>: Requiere múltiples dispositivos para una red efectiva.</li>
+          </ul>
+          <p className="mb-4">Consulta el <a href="https://meshtastic.org/" className="text-blue-600 dark:text-blue-400 hover:underline">Sitio oficial de Meshtastic</a> para más información.</p>
+        </Section>
+        <Section id="meshcore" title="¿Qué es Meshcore?">
+          <p className="mb-4">Meshcore es una biblioteca C++ de código abierto diseñada para crear redes de malla ligeras y descentralizadas utilizando radios LoRa, enfocada en proyectos embebidos. A diferencia de Meshtastic, que prioriza la comunicación casual, y Reticulum, que ofrece redes avanzadas, Meshcore equilibra simplicidad y escalabilidad, ideal para soluciones personalizadas sin infraestructura de internet.</p>
+          <h3 id="meshcore-caracteristicas" className="text-xl font-semibold mb-2">Características principales</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Enrutamiento híbrido</strong>: Usa inundación inicial para descubrir rutas y luego enrutamiento fijo para reducir tráfico. Solo repetidores retransmiten mensajes, minimizando congestión. Soporta hasta 64 saltos.</li>
+            <li><strong>Bajo consumo</strong>: Optimizado para dispositivos con batería o solares, ya que los clientes no retransmiten, prolongando la vida útil de la batería.</li>
+            <li><strong>Privacidad</strong>: Cifrado por defecto, sin exposición obligatoria de identidad. Los repetidores pueden priorizar o limitar tráfico, manteniendo control local.</li>
+            <li><strong>Simplicidad</strong>: Biblioteca C++ ligera, no depende de Arduino. Fácil de flashear con binarios precompilados usando herramientas como Adafruit ESPTool.</li>
+            <li><strong>Licencia MIT</strong>: Permite uso comercial y modificaciones cerradas, a diferencia de la GPL-3.0 de Meshtastic.</li>
+            <li><strong>Soporte de hardware</strong>: Compatible con Heltec, RAK Wireless, LILYGO (T-Beam, T-Deck), pero con menos dispositivos probados que Meshtastic.</li>
+            <li><strong>Funciones premium</strong>: Algunas funciones (como soporte para "post office", grupos, calendarios) requieren una licencia de $11.</li>
+          </ul>
+          <h3 id="meshcore-como-funciona" className="text-xl font-semibold mb-2">Cómo funciona</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Topología jerárquica</strong>: Los repetidores manejan el enrutamiento, mientras que los clientes (chat, sensores) no retransmiten, reduciendo el uso del espectro.</li>
+            <li><strong>Enrutamiento eficiente</strong>: Los mensajes inician con inundación para encontrar una ruta, luego usan rutas fijas para envíos posteriores, reintentando con inundación si falla.</li>
+            <li><strong>Gestión remota</strong>: Los repetidores no aparecen en Bluetooth tras configurarse, gestionados solo vía app, separando roles.</li>
+            <li><strong>Room Servers</strong>: Servidores locales para grupos pequeños, usando tráfico directo para minimizar congestión.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Aplicaciones prácticas</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Comunicación off-grid</strong>: Mensajería en áreas remotas sin internet.</li>
+            <li><strong>Emergencias</strong>: Redes instantáneas para desastres o rescates.</li>
+            <li><strong>Aventuras al aire libre</strong>: Comunicación para caminatas o campamentos.</li>
+            <li><strong>Táctico y seguridad</strong>: Uso en operaciones militares o policiales.</li>
+            <li><strong>IoT embebido</strong>: Redes de sensores personalizadas con bajo consumo.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Ventajas</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li>Enrutamiento más eficiente, reduciendo congestión en redes grandes.</li>
+            <li>Confirmación clara de entrega de mensajes, mejorando confiabilidad.</li>
+            <li>Bajo consumo energético, ideal para nodos solares o portátiles.</li>
+            <li>Licencia MIT permite mayor flexibilidad para proyectos comerciales.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Limitaciones</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Comunidad pequeña</strong>: Menos soporte y nodos activos (ej.: limitada adopción en áreas como Florida).</li>
+            <li><strong>Menos funciones</strong>: Sin GPS en tiempo real ni soporte para sensores (como SenseCAP) por defecto. Funciones avanzadas requieren pago.</li>
+            <li><strong>Roles fijos</strong>: Cambiar roles requiere reflasheo, a diferencia de Meshtastic.</li>
+            <li><strong>Incompatibilidad</strong>: Usa la misma banda (868/915 MHz), pero no es compatible con Meshtastic, fragmentando redes.</li>
+          </ul>
+          <h3 id="meshcore-comparacion" className="text-xl font-semibold mb-2">Meshcore vs. Meshtastic: Comparación</h3>
+          <p className="mb-4">Ambas plataformas usan LoRa para redes de malla off-grid, pero difieren en diseño, enrutamiento y experiencia de usuario. A continuación, una comparación detallada:</p>
+          <ComparisonTable />
+          <p className="mt-4 mb-4">Consulta el <a href="https://github.com/meshcore-dev/MeshCore" className="text-blue-600 dark:text-blue-400 hover:underline">Repositorio oficial de Meshcore</a> para más detalles.</p>
+        </Section>
+        <Section id="esp32" title="ESP32: El Corazón de Meshtastic">
+          <p className="mb-4">El ESP32 es un microcontrolador System-on-Chip (SoC) de Espressif Systems, diseñado para IoT, con conectividad inalámbrica y bajo costo. Es ampliamente usado en dispositivos Meshtastic.</p>
+          <h3 id="esp32-caracteristicas" className="text-xl font-semibold mb-2">Características principales</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Procesador</strong>: Dual-core Tensilica Xtensa LX6, hasta 240 MHz, con modo ULP para bajo consumo.</li>
+            <li><strong>Conectividad inalámbrica</strong>: Wi-Fi 802.11 b/g/n (2.4 GHz), Bluetooth v4.2 BR/EDR y BLE, LoRa con módulos externos.</li>
+            <li><strong>Memoria</strong>: 520 KB SRAM, 448 KB ROM, hasta 16 MB flash externa.</li>
+            <li><strong>Periféricos</strong>: 34 pines GPIO, I2C, SPI, UART, ADC, DAC, PWM, sensores táctiles.</li>
+            <li><strong>Bajo consumo</strong>: Modos Deep Sleep (~5 μA) y Light Sleep.</li>
+            <li><strong>Seguridad</strong>: Cifrado por hardware (AES, SHA-2, RSA), Secure Boot, Flash Encryption.</li>
+            <li><strong>Costo</strong>: $3-10 por módulo.</li>
+          </ul>
+          <h3 id="esp32-meshtastic" className="text-xl font-semibold mb-2">Relación con Meshtastic</h3>
+          <p className="mb-4">El ESP32 ejecuta el firmware Meshtastic, gestionando comunicación LoRa, redes de malla y conexión con dispositivos externos (Bluetooth/Wi-Fi). Ejemplos: LILYGO T-Beam, Heltec Wireless Stick.</p>
+          <h3 className="text-xl font-semibold mb-2">Configuración para Meshtastic</h3>
+          <ol className="list-decimal pl-6 mb-4">
+            <li>Elige un dispositivo con LoRa (ej.: T-Beam, 915 MHz en América).</li>
+            <li>Flashea el firmware Meshtastic con Web Flasher o CLI.</li>
+            <li>Conecta a la app Meshtastic (Bluetooth/Wi-Fi) y configura región/canal.</li>
+            <li>Usa una antena adecuada para evitar daños.</li>
+            <li>Prueba enviando mensajes o GPS.</li>
+          </ol>
+          <h3 className="text-xl font-semibold mb-2">Aplicaciones</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li>Domótica: Control con Home Assistant.</li>
+            <li>Robótica: Procesamiento en robots pequeños.</li>
+            <li>Sensores IoT: Monitoreo de temperatura, humedad.</li>
+            <li>Wearables: Dispositivos con BLE.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Ventajas y limitaciones</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Ventajas</strong>: Versátil, gran comunidad, compatible con Arduino/MicroPython.</li>
+            <li><strong>Limitaciones</strong>: LoRa requiere módulos externos, necesita optimización para bajo consumo.</li>
+          </ul>
+          <p className="mb-4">Consulta el <a href="https://www.espressif.com/en/products/socs/esp32" className="text-blue-600 dark:text-blue-400 hover:underline">Sitio oficial de Espressif</a> para más detalles.</p>
+        </Section>
+        <Section id="lilygo" title="LILYGO: Hardware para Meshtastic">
+          <p className="mb-4">LILYGO es una marca que fabrica placas de desarrollo basadas en ESP32, ideales para Meshtastic, con módulos LoRa, GPS y pantallas integrados.</p>
+          <h3 id="lilygo-caracteristicas" className="text-xl font-semibold mb-2">Características clave</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Microcontroladores</strong>: ESP32, ESP32-S3, ESP32-C3 (bajo consumo).</li>
+            <li><strong>Módulos integrados</strong>: LoRa (SX1276/SX1262), GPS (NEO-6M), pantallas OLED/TFT, baterías 18650/LiPo.</li>
+            <li><strong>Compatibilidad</strong>: Arduino IDE, PlatformIO, MicroPython, ESP-IDF.</li>
+            <li><strong>Costo</strong>: $8-40 por placa.</li>
+          </ul>
+          <h3 id="lilygo-productos" className="text-xl font-semibold mb-2">Productos destacados</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>TTGO T-Beam</strong>: ESP32, LoRa SX1276/SX1262, GPS, OLED opcional, batería 18650, $20-30.</li>
+            <li><strong>T-Display</strong>: ESP32, pantalla TFT 1.14", USB-C, $8-16, sin LoRa nativo.</li>
+            <li><strong>T-SIM7000G/T-A7670G</strong>: ESP32, LTE/GPRS, GPS, microSD, solar, $30-40.</li>
+            <li><strong>T-Zigbee</strong>: ESP32-C3, Zigbee, bajo consumo, $9-10.</li>
+            <li><strong>T-Echo</strong>: nRF52840, LoRa SX1262, E-Ink, GPS, case, $30-40.</li>
+            <li><strong>T-Embed CC1101</strong>: ESP32-S3, pantalla TFT 1.9", sub-1 GHz, $20-30.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Relación con Meshtastic</h3>
+          <p className="mb-4">T-Beam y T-Echo son populares por su integración de LoRa y GPS. LILYGO proporciona ejemplos para flashear firmware Meshtastic.</p>
+          <h3 className="text-xl font-semibold mb-2">Configuración</h3>
+          <ol className="list-decimal pl-6 mb-4">
+            <li>Elige placa (ej.: T-Beam, 868/915 MHz).</li>
+            <li>Flashea firmware desde el sitio oficial de Meshtastic.</li>
+            <li>Conecta antena y batería.</li>
+            <li>Configura con la app Meshtastic.</li>
+          </ol>
+          <h3 className="text-xl font-semibold mb-2">Desafíos</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li>Documentación limitada para algunas placas.</li>
+            <li>Problemas ocasionales de estabilidad.</li>
+            <li>Necesita configuración inicial (Arduino IDE).</li>
+          </ul>
+          <p className="mb-4">Compra en el <a href="https://www.lilygo.cc/" className="text-blue-600 dark:text-blue-400 hover:underline">Sitio oficial de LILYGO</a>.</p>
+        </Section>
+        <Section id="equipos" title="Equipos Necesarios para una Malla Meshtastic">
+          <p className="mb-4">Para montar una red de malla Meshtastic necesitas al menos dos nodos que usen LoRa (SX126x/LR11xx) en la frecuencia regional (915 MHz en América, 868 MHz en Europa). Recomendamos ESP32 (económico) o nRF52 (bajo consumo).</p>
+          <h3 className="text-xl font-semibold mb-2">Dispositivos Principales</h3>
+          <EquipmentTable />
+          <h3 className="text-xl font-semibold mt-6 mb-2">Accesorios Esenciales</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Antenas</strong>: Obligatorias. 3-5 dBi ($5-10) para portátiles, 9 dBi ($10-20) para nodos fijos. Verifica frecuencia (915 MHz, 868 MHz).</li>
+            <li><strong>Fuentes de poder</strong>: Baterías 18650 ($5-10), LiPo, o paneles solares ($10-20) con reguladores. Cargadores USB-C para configuración.</li>
+            <li><strong>Cases</strong>: Impermeables IP67 ($5-15). T-Echo incluye case.</li>
+            <li><strong>Cables</strong>: USB-C para flasheo, adaptadores SMA para antenas.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Herramientas de Configuración</h3>
+          <ul className="list-disc pl-6 mb-4">
+            <li><strong>Smartphone</strong>: App Meshtastic (Android/iOS, gratis) para configurar canales y enviar mensajes.</li>
+            <li><strong>Computadora</strong>: Para flashear firmware con Meshtastic Web Flasher (Chrome/Edge).</li>
+            <li><strong>Opcionales</strong>: GPS externo ($10-20) si no está integrado, sensores adicionales para IoT.</li>
+          </ul>
+          <h3 className="text-xl font-semibold mb-2">Costo Total Estimado</h3>
+          <p className="mb-4">Para 2 nodos básicos (T-Beam + antenas + baterías): $60-80. Con solares y cases: $100-150.</p>
+          <h3 className="text-xl font-semibold mb-2">Pasos para Montar la Malla</h3>
+          <ol className="list-decimal pl-6 mb-4">
+            <li>Compra dispositivos compatibles (ver tabla, verifica frecuencia).</li>
+            <li>Flashea firmware desde el sitio oficial de Meshtastic.</li>
+            <li>Conecta antenas y baterías.</li>
+            <li>Configura vía app: Elige rol (Client/Router).</li>
+            <li>Prueba enviando mensajes entre nodos.</li>
+          </ol>
+          <p className="mb-4">Consulta la <a href="https://meshtastic.org/docs/hardware/devices/" className="text-blue-600 dark:text-blue-400 hover:underline">Lista de dispositivos compatibles con Meshtastic</a>.</p>
+        </Section>
+        <VideoResources />
+        <FAQ />
+        <footer className="bg-gray-800 dark:bg-gray-900 text-white p-4">
+          <div className="container mx-auto text-center">
+            <p>© 2025 Guía de Redes de Malla. Referencias: 
+              <a href="https://meshtastic.org/" className="underline">Meshtastic</a>, 
+              <a href="https://github.com/meshcore-dev/MeshCore" className="underline">Meshcore</a>, 
+              <a href="https://www.lilygo.cc/" className="underline">LILYGO</a>, 
+              <a href="https://www.espressif.com/en/products/socs/esp32" className="underline">Espressif</a>.
+            </p>
+          </div>
+        </footer>
+        <button 
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+          className="fixed bottom-4 right-4 bg-blue-600 dark:bg-blue-900 text-white p-2 rounded-full hover:bg-blue-700 dark:hover:bg-blue-800 shadow-md"
+        >
+          ↑ Volver arriba
+        </button>
+      </div>
+    );
+
+    // Renderizar con manejo de errores
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('fallback').style.display = 'none';
+    } catch (error) {
+      console.error('Error al renderizar:', error);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('fallback').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
